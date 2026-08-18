@@ -102,6 +102,36 @@
   .layer.add{border-color:var(--purple); color:var(--purple); background:rgba(199,146,234,.06)}
   .arrow{text-align:center; color:var(--tx3); font-size:.8rem; line-height:1.9}
 
+  /* 역전파 플로우 */
+  .bp-desc{background:var(--panel2); border:1px solid var(--line); border-left:3px solid var(--orange);
+    border-radius:9px; padding:10px 14px; font-size:.89rem; margin:0 0 16px; min-height:3.4em; color:var(--tx2)}
+  .bp-desc b{color:var(--tx)}
+  .bp-cols{display:grid; grid-template-columns:minmax(150px,225px) minmax(0,1fr); gap:6px 20px; align-items:center}
+  .bp-head{font-size:.8rem; font-weight:700; color:var(--tx3); letter-spacing:.04em; padding-bottom:4px;
+    border-bottom:1px solid var(--line); margin-bottom:6px}
+  .bp-f .layer{transition:all .25s}
+  .bp-g{border:1px solid var(--line); border-left:3px solid #3a4653; border-radius:9px; padding:8px 12px;
+    font-size:.84rem; background:var(--panel2); color:var(--tx2); margin:3px 0; transition:all .25s}
+  .bp-g code{font-size:.82em}
+  .bp-branch{margin-left:16px; padding-left:12px; border-left:1px dashed #3a4653}
+  .bp-ar{text-align:center; color:var(--tx3); font-size:.85rem; line-height:1.6}
+  .bp-au{color:var(--warn); opacity:.45; padding-left:18px; font-size:.85rem; line-height:1.6}
+  #bpflow [data-step]{opacity:.3; transition:opacity .25s}
+  #bpflow [data-step].done{opacity:1}
+  #bpflow [data-step].lit{opacity:1}
+  #bpflow .bp-g.lit{border-color:var(--warn); border-left-color:var(--warn); color:var(--tx);
+    box-shadow:0 0 14px rgba(255,122,133,.18)}
+  #bpflow .bp-g.done{border-left-color:var(--warn)}
+  #bpflow .bp-f.lit .layer{border-color:var(--blue); box-shadow:0 0 14px rgba(95,168,255,.22)}
+  .upd{display:inline-block; font-size:.7rem; font-weight:700; color:#0e1116; background:var(--orange);
+    border-radius:5px; padding:1px 7px; margin-left:6px; white-space:nowrap; vertical-align:1px}
+  @media (max-width:560px){
+    .bp-cols{grid-template-columns:112px minmax(0,1fr); gap:6px 10px}
+    .bp-cols .layer{font-size:.72rem; padding:6px 6px}
+    .bp-g{font-size:.76rem; padding:7px 9px}
+    .bp-au{padding-left:8px}
+  }
+
   /* 퀴즈 */
   .quiz{margin:16px 0}
   .quiz .q{font-weight:600; margin:0 0 10px}
@@ -138,7 +168,33 @@
 </div>
 
 <!-- ============================================================ -->
-<h2><span class="num">01</span>문제 — 층을 지날수록 신호의 분포가 무너진다</h2>
+<h2><span class="num">01</span>배치 정규화란 무엇인가 — 이름 그대로 읽기</h2>
+
+<p><b>정규화(normalization)</b>는 딥러닝 이전부터 쓰이던 오래된 기법입니다. 스케일이 제각각인 값들을 <b>비교 가능한 공통 기준</b>으로 옮기는 일이죠. 가장 흔한 방식이 평균을 빼고 표준편차로 나누는 <b>표준화(z-score)</b>입니다.</p>
+
+<div class="eq">x̂ = <span class="frac"><span>x − μ</span><span>σ</span></span> <span class="lbl">→ 평균 0, 분산 1</span></div>
+
+<p>키(170 근처)와 몸무게(65 근처)를 그대로 모델에 넣으면 숫자가 큰 특징이 학습을 지배합니다. 그래서 <b>입력 데이터를 학습 전에 한 번 정규화</b>하는 것은 머신러닝의 기본 전처리입니다.</p>
+
+<p><b>배치 정규화(Batch Normalization, BN)</b>는 이 표준화를 전처리 단계가 아니라 <b>네트워크 안쪽, 층과 층 사이에서 반복하는 레이어</b>입니다. 이름을 그대로 쪼개 읽으면 정의가 나옵니다.</p>
+
+<ul>
+  <li><b>배치(Batch)</b> — 평균·분산을 어디서 구하나? 전체 데이터셋이 아니라, <b>지금 GPU에 올라와 있는 미니배치</b>에서 그때그때 계산합니다.</li>
+  <li><b>정규화(Normalization)</b> — 무엇을 하나? 위의 표준화 공식 그대로, 층의 출력을 평균 0·분산 1로 되돌립니다.</li>
+  <li>그리고 <b>레이어다</b> — conv나 ReLU처럼 네트워크에 끼워 넣는 부품이며, 학습되는 자기만의 파라미터(γ, β — 곧 나옵니다)를 가집니다.</li>
+</ul>
+
+<div class="scroll"><table>
+  <tr><th></th><th>입력 정규화 (전처리)</th><th>배치 정규화 (BN)</th></tr>
+  <tr><td><b>적용 위치</b></td><td>네트워크 입구에서 1회</td><td>층 사이마다 반복</td></tr>
+  <tr><td><b>통계의 출처</b></td><td>학습셋 전체 (학습 전 고정)</td><td>현재 미니배치 (매 step 재계산)</td></tr>
+  <tr><td><b>학습 파라미터</b></td><td>없음</td><td>γ, β (채널마다 한 쌍)</td></tr>
+</table></div>
+
+<p>그런데 왜 입구에서 한 번으로는 부족할까요? 입력을 아무리 깨끗하게 정규화해 줘도, <b>층을 하나 통과할 때마다 분포가 다시 망가지기 때문</b>입니다. 다음 섹션에서 이 문제를 봅니다.</p>
+
+<!-- ============================================================ -->
+<h2><span class="num">02</span>문제 — 층을 지날수록 신호의 분포가 무너진다</h2>
 
 <p>신경망의 한 층은 대략 <code>y = ReLU(Wx + b)</code>입니다. 문제는 이 연산이 입력 분포의 <b>평균과 분산을 보존하지 않는다</b>는 점입니다. 가중치가 조금만 크면 출력의 분산은 입력보다 커지고, 조금만 작으면 작아집니다.</p>
 
@@ -152,7 +208,7 @@
 <p>He 초기화 같은 정교한 초기화는 <b>학습 시작 시점</b>의 분산을 맞춰 주지만, 학습이 진행되어 가중치가 변하기 시작하면 이 균형은 다시 깨집니다. 앞쪽 층이 업데이트될 때마다 뒤쪽 층이 받는 입력 분포가 계속 흔들리는 것이죠. BN 논문은 이 현상을 <i>internal covariate shift</i>라고 불렀습니다. <span class="muted small">(후속 연구(Santurkar et al., 2018)는 BN의 실제 효과가 loss landscape를 매끄럽게 만들어 큰 learning rate를 허용하는 것에 가깝다고 재해석했지만, "분포가 흔들리는 것을 층마다 다시 잡아준다"는 동작 자체는 그대로입니다.)</span></p>
 
 <!-- ============================================================ -->
-<h2><span class="num">02</span>BatchNorm의 동작 — 네 줄이면 끝난다</h2>
+<h2><span class="num">03</span>BatchNorm의 동작 — 네 줄이면 끝난다</h2>
 
 <p>아이디어는 단순합니다. <b>미니배치 안에서, 채널(특징)별로</b> 평균과 분산을 구해 정규화하고, 학습 가능한 두 파라미터로 다시 스케일·이동시킵니다.</p>
 
@@ -189,7 +245,74 @@
 <p>입력을 어디로 끌고 가든 출력 분포는 <b>평균 β, 표준편차 γ</b> 근처에 정확히 놓입니다. 다음 층 입장에서는 "앞 층이 뭘 하든 내 입력은 항상 예측 가능한 범위에 있다"는 보장이 생기는 셈입니다. 이 보장이 층마다 반복되면, 아무리 깊어도 신호가 폭발하거나 소멸하지 않습니다.</p>
 
 <!-- ============================================================ -->
-<h2><span class="num">03</span>ResNet 블록 안에서 BN의 자리</h2>
+<h2><span class="num">04</span>역전파 — gradient는 BN을 어떻게 통과하는가</h2>
+
+<p>γ와 β가 "학습 가능한 파라미터"라고 했는데, 실제로 어떻게 업데이트될까요? 특별한 메커니즘은 없습니다. <b>conv의 W와 똑같이</b> 역전파로 gradient를 받아 optimizer가 업데이트합니다. 다만 BN 레이어 안에서 gradient가 <b>세 갈래로 갈라진다</b>는 점이 재미있는 부분입니다.</p>
+
+<div class="demo" id="bpflow">
+  <p class="dtitle"><span class="tag" style="background:var(--orange)">FLOW</span>순전파 → 역전파, 단계별로 따라가기</p>
+  <p class="dsub">왼쪽 열이 순전파(위 → 아래), 오른쪽 열이 역전파(아래 → 위)입니다. <b>다음 ▶</b> 버튼으로 gradient가 흘러가는 순서를 한 단계씩 따라가 보세요.</p>
+  <div class="ctrl">
+    <button class="btn" id="bpPrev">◀ 이전</button>
+    <button class="btn" id="bpNext">다음 ▶</button>
+    <button class="btn" id="bpReset">처음부터</button>
+    <span class="grp"><span class="val" id="bpStepNo" style="min-width:4em"></span></span>
+  </div>
+  <div class="bp-desc" id="bpDesc"></div>
+
+  <div class="bp-cols">
+    <div class="bp-head">순전파 ↓</div>
+    <div class="bp-head" style="color:var(--warn)">역전파 ↑</div>
+
+    <div class="bp-f" data-step="0"><div class="layer">입력 x</div></div>
+    <div class="bp-g" data-step="8"><code>∂L/∂x</code>가 <b>앞 층의 출력 gradient</b>가 되어 같은 과정이 첫 층까지 반복</div>
+
+    <div class="bp-ar">↓</div><div class="bp-au">↑</div>
+
+    <div class="bp-f" data-step="0"><div class="layer">conv 3×3 <span class="muted">(W)</span></div></div>
+    <div class="bp-g" data-step="7"><code>∂L/∂W</code> 계산 <span class="upd">W 업데이트</span><br>
+      <span class="small">bias 방향 gradient는 뒤의 BN이 평균을 빼며 소거 → <code>bias=False</code></span></div>
+
+    <div class="bp-ar">↓</div><div class="bp-au">↑</div>
+
+    <div class="bp-f" data-step="0"><div class="layer bn">BatchNorm <span style="color:var(--orange)">(γ, β)</span></div></div>
+    <div>
+      <div class="bp-g" data-step="4"><code>∂L/∂y</code> 도착 — BN 안에서 <b>세 갈래</b>로 갈라짐</div>
+      <div class="bp-branch">
+        <div class="bp-g" data-step="5"><code>∂L/∂γ = Σ ∂L/∂y · x̂</code> <span class="upd">γ 업데이트</span></div>
+        <div class="bp-g" data-step="5"><code>∂L/∂β = Σ ∂L/∂y</code> <span class="upd">β 업데이트</span></div>
+        <div class="bp-g" data-step="6"><code>∂L/∂x̂ = ∂L/∂y · γ</code> → <code>∂L/∂x</code> <span class="k">× 1/σ</span> — conv 쪽으로 계속</div>
+      </div>
+    </div>
+
+    <div class="bp-ar">↓</div><div class="bp-au">↑</div>
+
+    <div class="bp-f" data-step="0"><div class="layer relu">ReLU</div></div>
+    <div class="bp-g" data-step="3">순전파 때 음수여서 0이 됐던 위치는 gradient도 <b>0으로 차단</b>, 나머지는 그대로 통과</div>
+
+    <div class="bp-ar">↓</div><div class="bp-au">↑</div>
+
+    <div class="bp-f" data-step="0"><div class="layer" style="color:var(--tx3)">다음 층들 ⋯</div></div>
+    <div class="bp-g" data-step="2">뒤쪽 층들을 하나씩 거슬러 gradient가 올라옴</div>
+
+    <div class="bp-ar">↓</div><div class="bp-au">↑</div>
+
+    <div class="bp-f" data-step="0"><div class="layer" style="border-color:var(--warn); color:var(--warn)">Loss</div></div>
+    <div class="bp-g" data-step="1"><code>∂L/∂output</code> — <b>역전파의 시작점</b></div>
+  </div>
+</div>
+
+<p>따라가 보면 세 가지가 보입니다.</p>
+<ul>
+  <li><b>γ·β는 특별하지 않다</b> — Loss에서 흘러온 gradient의 한 갈래를 받아, W와 같은 optimizer로 업데이트되는 평범한 파라미터입니다. 한 step마다 W·γ·β가 전부 동시에 조금씩 움직입니다.</li>
+  <li><b>gradient도 정규화된다</b> — x 방향 gradient에는 <b>1/σ가 곱해집니다</b>. 순전파에서 activation의 스케일을 층마다 잡아 주듯, 역전파에서도 gradient의 스케일이 층마다 다시 잡힙니다. BN을 쓰면 큰 learning rate를 견디는 실질적 이유 중 하나입니다.</li>
+  <li><b>conv에 bias가 없는 이유가 여기서도 보인다</b> — bias를 아무리 키워도 바로 뒤 BN이 평균에서 도로 빼 버리므로, bias로 가는 gradient는 소거됩니다. 그래서 애초에 두지 않습니다.</li>
+</ul>
+
+<p class="small muted">엄밀히는 μ<sub>B</sub>와 σ²<sub>B</sub> 자체도 x의 함수이므로 ∂L/∂x에는 배치 통계를 거쳐 돌아오는 보정항이 두 개 더 붙습니다. 오토그래드가 알아서 계산해 주는 부분이라, 여기서는 큰 흐름만 봤습니다.</p>
+
+<!-- ============================================================ -->
+<h2><span class="num">05</span>ResNet 블록 안에서 BN의 자리</h2>
 
 <p>ResNet의 basic block에서 BN은 <b>모든 conv 바로 뒤, ReLU 앞</b>에 들어갑니다. 그리고 두 번째 BN 출력에 skip connection이 <span class="ks">더해진 뒤</span> 마지막 ReLU를 통과합니다.</p>
 
@@ -247,7 +370,7 @@
 </div>
 
 <!-- ============================================================ -->
-<h2><span class="num">04</span>실험 — BN이 있을 때와 없을 때, 신호는 어떻게 전파되는가</h2>
+<h2><span class="num">06</span>실험 — BN이 있을 때와 없을 때, 신호는 어떻게 전파되는가</h2>
 
 <p>말로만 하면 심심하니, 브라우저에서 직접 30층짜리 네트워크에 신호를 흘려 봅시다. 아래 데모는 <b>지금 이 자리에서</b> 무작위 가중치(He 초기화 기반)로 30층 네트워크를 만들고, 실제로 forward pass를 계산해 각 층 activation의 표준편차를 그립니다.</p>
 
@@ -282,7 +405,7 @@
 <p>이것이 ResNet 논문에서 skip connection과 BN이 함께 쓰인 이유입니다. <b>skip connection은 gradient가 지나갈 고속도로를 놓고, BN은 그 고속도로를 달리는 신호의 크기를 층마다 다시 규격에 맞춥니다.</b> 둘 중 하나만으로는 매우 깊은 네트워크를 학습시키기 어렵습니다.</p>
 
 <!-- ============================================================ -->
-<h2><span class="num">05</span>학습할 때와 추론할 때의 BN은 다르다</h2>
+<h2><span class="num">07</span>학습할 때와 추론할 때의 BN은 다르다</h2>
 
 <p>BN에는 함정이 하나 있습니다. 배치 통계 μ<sub>B</sub>, σ²<sub>B</sub>는 <b>배치가 있어야</b> 계산할 수 있다는 점입니다. 추론 시에는 이미지 한 장이 들어올 수도 있고, 같은 입력에 항상 같은 출력이 나와야 합니다.</p>
 
@@ -305,7 +428,7 @@
 </div>
 
 <!-- ============================================================ -->
-<h2><span class="num">06</span>BN의 한계, 그리고 그 다음</h2>
+<h2><span class="num">08</span>BN의 한계, 그리고 그 다음</h2>
 
 <ul>
   <li><b>작은 배치에 약하다</b> — 배치가 2~4장이면 통계 추정이 노이즈투성이가 됩니다. 그래서 detection·segmentation처럼 배치가 작은 작업에서는 배치와 무관하게 채널 그룹 단위로 정규화하는 <b>GroupNorm</b>이 자주 쓰입니다.</li>
@@ -317,7 +440,7 @@
 <p>정리하면 — 정규화 기법은 여럿이지만 질문은 하나입니다. <b>"깊은 네트워크에서 신호의 분포를 누가, 어디서, 어떻게 다시 잡아 줄 것인가."</b> BN은 그 질문에 대한 2015년의 답이었고, ResNet은 그 답 위에서 세워졌습니다.</p>
 
 <!-- ============================================================ -->
-<h2><span class="num">07</span>확인 퀴즈</h2>
+<h2><span class="num">09</span>확인 퀴즈</h2>
 
 <div class="quiz card" data-answer="1">
   <p class="q">Q1. ResNet의 conv 레이어에 bias가 없는(<code>bias=False</code>) 이유는?</p>
@@ -582,6 +705,43 @@ const DPR_W = 1600; // 캔버스 내부 좌표계 고정
     return v.toExponential(1);
   }
   draw();
+})();
+
+// ============================================================
+// 역전파 플로우 스텝
+// ============================================================
+(function(){
+  const $ = id => document.getElementById(id);
+  const els = Array.from(document.querySelectorAll('#bpflow [data-step]'));
+  const DESC = [
+    '<b>① 순전파</b> — 입력이 conv → BN → ReLU → (다음 층들)을 지나 Loss가 계산됩니다. 이때 BN은 배치 통계 μ, σ와 정규화된 값 x̂를 저장해 둡니다 — 역전파에서 다시 씁니다.',
+    '<b>② 역전파 시작</b> — Loss를 네트워크 출력으로 미분한 <code>∂L/∂output</code>에서 출발합니다.',
+    '<b>③ 뒤쪽 층 통과</b> — 각 층은 "출력에 대한 gradient"를 받아 "입력에 대한 gradient"를 돌려주며, gradient가 층층이 거슬러 올라옵니다.',
+    '<b>④ ReLU 게이트</b> — 순전파 때 음수여서 0으로 잘렸던 위치는 gradient도 0으로 차단됩니다. 통과했던 위치는 gradient가 그대로 지나갑니다.',
+    '<b>⑤ BN 도착</b> — <code>∂L/∂y</code>가 BN 안에서 세 갈래로 갈라집니다: γ 방향, β 방향, 그리고 입력 x 방향.',
+    '<b>⑥ γ·β 업데이트</b> — <code>∂L/∂γ = Σ ∂L/∂y·x̂</code>, <code>∂L/∂β = Σ ∂L/∂y</code> (배치·공간 방향으로 합산). 이 두 gradient로 optimizer가 γ, β를 곧바로 업데이트합니다.',
+    '<b>⑦ x 방향 계속 전파</b> — <code>∂L/∂x̂ = ∂L/∂y·γ</code>에서 출발해 <code>∂L/∂x</code>로 변환됩니다. 이때 <b>1/σ가 곱해져 gradient의 스케일도 정규화</b>됩니다.',
+    '<b>⑧ conv 도착</b> — <code>∂L/∂x</code>를 받아 <code>∂L/∂W</code>를 계산하고 W를 업데이트합니다. bias 방향은 BN이 소거하므로 애초에 없습니다.',
+    '<b>⑨ 더 앞으로</b> — conv의 입력 방향 gradient가 앞 층의 "출력 gradient"가 되어, 같은 과정이 첫 층까지 반복됩니다. 이것으로 한 step의 업데이트가 끝납니다.'
+  ];
+  let cur = 0;
+  function render(){
+    els.forEach(el => {
+      const s = +el.dataset.step;
+      el.classList.toggle('lit', s === cur);
+      el.classList.toggle('done', s < cur);
+    });
+    $('bpDesc').innerHTML = DESC[cur];
+    $('bpStepNo').textContent = (cur+1) + ' / ' + DESC.length;
+    $('bpNext').disabled = cur === DESC.length-1;
+    $('bpPrev').disabled = cur === 0;
+    $('bpNext').style.opacity = cur === DESC.length-1 ? .4 : 1;
+    $('bpPrev').style.opacity = cur === 0 ? .4 : 1;
+  }
+  $('bpNext').addEventListener('click', ()=>{ if(cur < DESC.length-1){ cur++; render(); } });
+  $('bpPrev').addEventListener('click', ()=>{ if(cur > 0){ cur--; render(); } });
+  $('bpReset').addEventListener('click', ()=>{ cur = 0; render(); });
+  render();
 })();
 
 // ============================================================
