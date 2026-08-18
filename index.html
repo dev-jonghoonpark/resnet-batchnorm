@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ResNet의 BatchNorm — 깊은 네트워크는 왜 배치 정규화가 필요한가</title>
+<link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'&gt;&lt;text y='.9em' font-size='90'&gt;📊&lt;/text&gt;&lt;/svg&gt;">
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b23; --panel2:#1c232d; --line:#2a323d;
+    --tx:#e6edf3; --tx2:#9aa7b4; --tx3:#6e7d8d;
+    --blue:#5fa8ff;    /* 정규화 */
+    --orange:#ffb454;  /* γ·β */
+    --green:#7ee081;   /* BN on */
+    --purple:#c792ea;  /* skip */
+    --warn:#ff7a85;    /* BN off / 폭발 */
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--tx);
+    font-family:'Pretendard','Apple SD Gothic Neo','Noto Sans KR',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    line-height:1.75; -webkit-text-size-adjust:100%;
+  }
+  .wrap{max-width:860px; margin:0 auto; padding:32px 20px 96px}
+  header{padding:28px 0 8px; border-bottom:1px solid var(--line); margin-bottom:36px}
+  h1{font-size:1.65rem; line-height:1.35; margin:0 0 10px; letter-spacing:-0.02em}
+  .sub{color:var(--tx2); font-size:.95rem; margin:0}
+  h2{font-size:1.22rem; margin:56px 0 14px; letter-spacing:-0.01em; display:flex; align-items:baseline; gap:10px}
+  h2 .num{font-size:.78rem; color:var(--tx3); font-weight:600; font-variant-numeric:tabular-nums;
+    border:1px solid var(--line); border-radius:6px; padding:2px 7px; flex:none}
+  h3{font-size:1.02rem; margin:30px 0 10px; color:var(--tx)}
+  p{margin:0 0 14px}
+  code{font-family:'SFMono-Regular',ui-monospace,Menlo,Consolas,monospace; font-size:.88em;
+    background:#222b36; border:1px solid var(--line); border-radius:5px; padding:1px 5px; color:#cfe3ff}
+  .lead{background:linear-gradient(180deg,#1a2330,#161d28); border:1px solid #2c3a4c;
+    border-left:3px solid var(--blue); border-radius:12px; padding:20px 22px; margin:0 0 8px}
+  .lead p:last-child{margin-bottom:0}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:20px 22px; margin:18px 0}
+  .card.tight{padding:16px 18px}
+  .k{color:var(--blue); font-weight:700}
+  .k2{color:var(--orange); font-weight:700}
+  .kg{color:var(--green); font-weight:700}
+  .ks{color:var(--purple); font-weight:700}
+  .kw{color:var(--warn); font-weight:700}
+  .muted{color:var(--tx2)}
+  .small{font-size:.88rem}
+  ul,ol{margin:0 0 14px; padding-left:1.25em}
+  li{margin:6px 0}
+  table{width:100%; border-collapse:collapse; font-size:.9rem; margin:8px 0 6px}
+  th,td{padding:9px 10px; border-bottom:1px solid var(--line); text-align:left}
+  th{color:var(--tx2); font-weight:600; font-size:.82rem; letter-spacing:.02em; border-bottom:1px solid #3a4653}
+  .scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+
+  /* 수식 */
+  .eq{background:var(--panel2); border:1px solid var(--line); border-radius:10px;
+    padding:14px 18px; margin:14px 0; font-family:'STIX Two Math','Cambria Math',Georgia,serif;
+    font-size:1.05rem; overflow-x:auto; white-space:nowrap; text-align:center}
+  .eq .lbl{display:inline-block; margin-left:18px; font-family:'Pretendard','Apple SD Gothic Neo',sans-serif;
+    font-size:.8rem; color:var(--tx3)}
+  sub,sup{font-size:.72em}
+  .frac{display:inline-flex; flex-direction:column; vertical-align:middle; text-align:center; margin:0 3px}
+  .frac>span{display:block; padding:0 5px; line-height:1.3}
+  .frac>span:first-child{border-bottom:1px solid var(--tx2)}
+
+  /* 데모 공통 */
+  .demo{background:var(--panel); border:1px solid #2c3a4c; border-radius:12px; padding:20px 22px; margin:22px 0}
+  .demo .dtitle{font-weight:700; margin:0 0 4px; font-size:.98rem}
+  .demo .dtitle .tag{font-size:.7rem; font-weight:700; color:#0e1116; background:var(--green);
+    border-radius:5px; padding:2px 7px; margin-right:8px; vertical-align:2px; letter-spacing:.03em}
+  .demo .dsub{color:var(--tx2); font-size:.87rem; margin:0 0 14px}
+  .ctrl{display:flex; flex-wrap:wrap; gap:14px 26px; margin:12px 0 14px; align-items:center}
+  .ctrl .grp{display:flex; align-items:center; gap:9px; font-size:.86rem; color:var(--tx2)}
+  .ctrl input[type=range]{width:130px; accent-color:var(--blue)}
+  .ctrl .val{font-variant-numeric:tabular-nums; color:var(--tx); min-width:3.2em; display:inline-block;
+    font-family:ui-monospace,Menlo,monospace; font-size:.84rem}
+  .toggle{display:inline-flex; align-items:center; gap:8px; cursor:pointer; user-select:none;
+    border:1px solid var(--line); border-radius:8px; padding:6px 12px; font-size:.86rem; color:var(--tx2);
+    background:var(--panel2); transition:all .15s}
+  .toggle.on{border-color:var(--green); color:var(--green)}
+  .toggle.on.purple{border-color:var(--purple); color:var(--purple)}
+  .toggle .dot{width:8px; height:8px; border-radius:50%; background:var(--tx3)}
+  .toggle.on .dot{background:var(--green)}
+  .toggle.on.purple .dot{background:var(--purple)}
+  canvas{width:100%; height:auto; display:block; border-radius:8px; background:var(--panel2)}
+  .legend{display:flex; flex-wrap:wrap; gap:6px 18px; margin:10px 0 0; font-size:.82rem; color:var(--tx2)}
+  .legend .sw{display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px}
+  .stat{font-family:ui-monospace,Menlo,monospace; font-size:.82rem; color:var(--tx2); margin-top:8px}
+  .stat b{color:var(--tx); font-weight:600}
+  button.btn{background:var(--panel2); color:var(--tx); border:1px solid var(--line); border-radius:8px;
+    padding:6px 14px; font-size:.85rem; cursor:pointer; font-family:inherit}
+  button.btn:hover{border-color:var(--blue); color:var(--blue)}
+
+  /* 블록 도식 */
+  .blocks{display:flex; gap:18px; flex-wrap:wrap; margin:14px 0 6px}
+  .blockcol{flex:1; min-width:230px}
+  .blockcol .bt{font-size:.85rem; color:var(--tx2); font-weight:600; margin:0 0 10px; text-align:center}
+  .flow{display:flex; flex-direction:column; align-items:stretch}
+  .layer{border:1px solid var(--line); border-radius:9px; padding:8px 12px; text-align:center;
+    font-size:.85rem; background:var(--panel2); font-family:ui-monospace,Menlo,monospace}
+  .layer.bn{border-color:var(--green); color:var(--green); background:rgba(126,224,129,.06)}
+  .layer.relu{border-color:#3a4653; color:var(--tx2)}
+  .layer.add{border-color:var(--purple); color:var(--purple); background:rgba(199,146,234,.06)}
+  .arrow{text-align:center; color:var(--tx3); font-size:.8rem; line-height:1.9}
+
+  /* 퀴즈 */
+  .quiz{margin:16px 0}
+  .quiz .q{font-weight:600; margin:0 0 10px}
+  .quiz .opts{display:flex; flex-direction:column; gap:8px}
+  .quiz .opt{border:1px solid var(--line); border-radius:9px; padding:10px 14px; cursor:pointer;
+    font-size:.92rem; background:var(--panel2); transition:all .15s}
+  .quiz .opt:hover{border-color:var(--blue)}
+  .quiz .opt.correct{border-color:var(--green); color:var(--green); background:rgba(126,224,129,.07)}
+  .quiz .opt.wrong{border-color:var(--warn); color:var(--warn); background:rgba(255,122,133,.07)}
+  .quiz .expl{display:none; margin-top:10px; font-size:.88rem; color:var(--tx2);
+    border-left:3px solid var(--green); padding:4px 0 4px 14px}
+  .quiz .expl.show{display:block}
+
+  footer{margin-top:72px; padding-top:20px; border-top:1px solid var(--line);
+    color:var(--tx3); font-size:.84rem}
+  footer a{color:var(--tx2)}
+  @media (max-width:560px){
+    .ctrl input[type=range]{width:100px}
+    h1{font-size:1.4rem}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>ResNet의 BatchNorm<br><span class="muted" style="font-weight:400">— 깊은 네트워크는 왜 배치 정규화가 필요한가</span></h1>
+  <p class="sub">Batch Normalization이 무엇을 하는지, 그리고 ResNet이 152층을 학습할 수 있었던 이유에서 BN이 차지하는 자리를 직접 실험하며 살펴봅니다.</p>
+</header>
+
+<div class="lead">
+  <p>ResNet 논문(2015)에는 이런 한 문장이 있습니다. <i>"We adopt batch normalization (BN) right after each convolution and before activation."</i> — 모든 conv 뒤, 활성화 함수 앞에 BN을 넣었다는 것입니다.</p>
+  <p>skip connection이 ResNet의 주인공이라면, BN은 조연이 아니라 <b>공동 주연</b>에 가깝습니다. BN 없이는 skip connection이 있어도 수십 층짜리 네트워크의 학습이 제대로 되지 않습니다. 이 페이지에서는 그 이유를 신호의 <span class="k">분포</span> 관점에서 따라가 봅니다.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="num">01</span>문제 — 층을 지날수록 신호의 분포가 무너진다</h2>
+
+<p>신경망의 한 층은 대략 <code>y = ReLU(Wx + b)</code>입니다. 문제는 이 연산이 입력 분포의 <b>평균과 분산을 보존하지 않는다</b>는 점입니다. 가중치가 조금만 크면 출력의 분산은 입력보다 커지고, 조금만 작으면 작아집니다.</p>
+
+<p>층이 하나라면 별일 아닙니다. 하지만 이 왜곡이 <b>수십 층에 걸쳐 곱해지면</b> 지수적으로 증폭됩니다. 분산이 층마다 1.5배씩만 커져도 30층 뒤에는 약 19만 배가 됩니다. 반대로 0.7배씩 줄면 30층 뒤에는 거의 0입니다.</p>
+
+<ul>
+  <li><span class="kw">분산 폭발</span> — activation이 커지면서 gradient도 폭발, 학습이 발산합니다.</li>
+  <li><span class="kw">분산 소멸</span> — activation이 0 근처로 붕괴하면서 gradient도 소멸, 학습이 멈춥니다.</li>
+</ul>
+
+<p>He 초기화 같은 정교한 초기화는 <b>학습 시작 시점</b>의 분산을 맞춰 주지만, 학습이 진행되어 가중치가 변하기 시작하면 이 균형은 다시 깨집니다. 앞쪽 층이 업데이트될 때마다 뒤쪽 층이 받는 입력 분포가 계속 흔들리는 것이죠. BN 논문은 이 현상을 <i>internal covariate shift</i>라고 불렀습니다. <span class="muted small">(후속 연구(Santurkar et al., 2018)는 BN의 실제 효과가 loss landscape를 매끄럽게 만들어 큰 learning rate를 허용하는 것에 가깝다고 재해석했지만, "분포가 흔들리는 것을 층마다 다시 잡아준다"는 동작 자체는 그대로입니다.)</span></p>
+
+<!-- ============================================================ -->
+<h2><span class="num">02</span>BatchNorm의 동작 — 네 줄이면 끝난다</h2>
+
+<p>아이디어는 단순합니다. <b>미니배치 안에서, 채널(특징)별로</b> 평균과 분산을 구해 정규화하고, 학습 가능한 두 파라미터로 다시 스케일·이동시킵니다.</p>
+
+<div class="eq">μ<sub>B</sub> = <span class="frac"><span>1</span><span>m</span></span> Σ x<sub>i</sub> <span class="lbl">배치 평균</span></div>
+<div class="eq">σ²<sub>B</sub> = <span class="frac"><span>1</span><span>m</span></span> Σ (x<sub>i</sub> − μ<sub>B</sub>)² <span class="lbl">배치 분산</span></div>
+<div class="eq">x̂<sub>i</sub> = <span class="frac"><span>x<sub>i</sub> − μ<sub>B</sub></span><span>√(σ²<sub>B</sub> + ε)</span></span> <span class="lbl">정규화 → 평균 0, 분산 1</span></div>
+<div class="eq">y<sub>i</sub> = <span style="color:var(--orange)">γ</span> x̂<sub>i</sub> + <span style="color:var(--orange)">β</span> <span class="lbl">스케일·이동 (학습 파라미터)</span></div>
+
+<p>마지막 줄이 중요합니다. 정규화만 하면 네트워크의 표현력이 제한될 수 있으니(예: 항상 평균 0을 강제하면 ReLU 앞에서 절반이 잘려나감), <span class="k2">γ(감마)</span>와 <span class="k2">β(베타)</span>라는 학습 가능한 파라미터로 "네트워크가 원한다면" 어떤 평균·분산이든 다시 만들 수 있게 열어 둡니다. 핵심은 <b>분포를 고정하는 것이 아니라, 분포를 네트워크가 직접 제어할 수 있는 두 개의 손잡이(γ, β)로 넘겨주는 것</b>입니다.</p>
+
+<p class="small muted">conv 뒤에 붙는 BN(2D)은 채널 하나당 (배치 × 높이 × 너비) 전체에서 통계를 냅니다. 즉 채널 수만큼의 (γ, β) 쌍을 가집니다. ResNet-50의 BN 파라미터가 그토록 적은 이유입니다.</p>
+
+<!-- 데모 1 -->
+<div class="demo">
+  <p class="dtitle"><span class="tag">DEMO 1</span>분포를 직접 밀고 당겨 보기</p>
+  <p class="dsub">왼쪽(붉은색)이 어떤 층에 들어온 입력 분포, 오른쪽(푸른색)이 BN을 통과한 뒤의 분포입니다. 입력의 평균·표준편차를 아무리 흔들어도 출력은 γ·β가 정한 자리에 고정되는 것을 확인해 보세요.</p>
+  <div class="ctrl">
+    <span class="grp">입력 평균 <input type="range" id="d1mean" min="-4" max="4" step="0.1" value="1.5"> <span class="val" id="d1meanV"></span></span>
+    <span class="grp">입력 표준편차 <input type="range" id="d1std" min="0.2" max="3" step="0.05" value="1.8"> <span class="val" id="d1stdV"></span></span>
+  </div>
+  <div class="ctrl">
+    <span class="grp">γ (스케일) <input type="range" id="d1gamma" min="0.1" max="3" step="0.05" value="1" style="accent-color:var(--orange)"> <span class="val" id="d1gammaV"></span></span>
+    <span class="grp">β (이동) <input type="range" id="d1beta" min="-3" max="3" step="0.1" value="0" style="accent-color:var(--orange)"> <span class="val" id="d1betaV"></span></span>
+    <button class="btn" id="d1resample">배치 다시 뽑기</button>
+  </div>
+  <canvas id="d1canvas" width="1600" height="480"></canvas>
+  <div class="legend">
+    <span><span class="sw" style="background:var(--warn)"></span>BN 입력 x</span>
+    <span><span class="sw" style="background:var(--blue)"></span>BN 출력 y = γx̂ + β</span>
+  </div>
+  <div class="stat" id="d1stat"></div>
+</div>
+
+<p>입력을 어디로 끌고 가든 출력 분포는 <b>평균 β, 표준편차 γ</b> 근처에 정확히 놓입니다. 다음 층 입장에서는 "앞 층이 뭘 하든 내 입력은 항상 예측 가능한 범위에 있다"는 보장이 생기는 셈입니다. 이 보장이 층마다 반복되면, 아무리 깊어도 신호가 폭발하거나 소멸하지 않습니다.</p>
+
+<!-- ============================================================ -->
+<h2><span class="num">03</span>ResNet 블록 안에서 BN의 자리</h2>
+
+<p>ResNet의 basic block에서 BN은 <b>모든 conv 바로 뒤, ReLU 앞</b>에 들어갑니다. 그리고 두 번째 BN 출력에 skip connection이 <span class="ks">더해진 뒤</span> 마지막 ReLU를 통과합니다.</p>
+
+<div class="card tight">
+  <div class="blocks">
+    <div class="blockcol">
+      <p class="bt">원본 ResNet (post-activation, 2015)</p>
+      <div class="flow">
+        <div class="layer">conv 3×3</div>
+        <div class="arrow">↓</div>
+        <div class="layer bn">BatchNorm</div>
+        <div class="arrow">↓</div>
+        <div class="layer relu">ReLU</div>
+        <div class="arrow">↓</div>
+        <div class="layer">conv 3×3</div>
+        <div class="arrow">↓</div>
+        <div class="layer bn">BatchNorm</div>
+        <div class="arrow">↓</div>
+        <div class="layer add">⊕ &nbsp;+ skip</div>
+        <div class="arrow">↓</div>
+        <div class="layer relu">ReLU</div>
+      </div>
+    </div>
+    <div class="blockcol">
+      <p class="bt">개선판 pre-activation (2016)</p>
+      <div class="flow">
+        <div class="layer bn">BatchNorm</div>
+        <div class="arrow">↓</div>
+        <div class="layer relu">ReLU</div>
+        <div class="arrow">↓</div>
+        <div class="layer">conv 3×3</div>
+        <div class="arrow">↓</div>
+        <div class="layer bn">BatchNorm</div>
+        <div class="arrow">↓</div>
+        <div class="layer relu">ReLU</div>
+        <div class="arrow">↓</div>
+        <div class="layer">conv 3×3</div>
+        <div class="arrow">↓</div>
+        <div class="layer add">⊕ &nbsp;+ skip</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p>왜 이 순서일까요?</p>
+<ul>
+  <li><b>conv 뒤에 BN</b> — conv가 만든 왜곡을 즉시 교정합니다. conv의 bias는 BN의 β와 역할이 겹치므로 아예 빼 버립니다(<code>bias=False</code>).</li>
+  <li><b>ReLU 앞에 BN</b> — 정규화된(평균 0 근처) 신호가 ReLU에 들어가야 "절반은 통과, 절반은 차단"이라는 비선형성이 제대로 작동합니다. 분포가 통째로 양수 쪽에 있으면 ReLU는 그냥 항등함수가 되어 버립니다.</li>
+  <li><b>pre-activation 변형</b> — Identity Mappings 논문(2016)은 BN·ReLU를 conv 앞으로 옮기면 skip 경로가 완전한 항등 경로가 되어 1000층 이상도 학습됨을 보였습니다. skip 경로 위에 아무것도(BN조차) 놓지 않는 것이 요점입니다.</li>
+</ul>
+
+<div class="card">
+  <h3 style="margin-top:0">덤: 마지막 BN의 γ를 0으로 초기화하는 트릭</h3>
+  <p class="small" style="margin-bottom:0">각 residual block의 <b>마지막 BN</b>의 γ를 0으로 초기화하면, 학습 초기에 블록 전체가 <code>y = 0·(...) + x = x</code>, 즉 완전한 항등함수에서 출발합니다. 네트워크가 "얕은 네트워크에서 시작해 점점 깊어지는" 효과를 얻어 학습이 더 안정됩니다. γ·β가 분포의 손잡이라는 관점이 있어야 이해되는 트릭입니다. <span class="muted">(Goyal et al. 2017, "Accurate, Large Minibatch SGD")</span></p>
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="num">04</span>실험 — BN이 있을 때와 없을 때, 신호는 어떻게 전파되는가</h2>
+
+<p>말로만 하면 심심하니, 브라우저에서 직접 30층짜리 네트워크에 신호를 흘려 봅시다. 아래 데모는 <b>지금 이 자리에서</b> 무작위 가중치(He 초기화 기반)로 30층 네트워크를 만들고, 실제로 forward pass를 계산해 각 층 activation의 표준편차를 그립니다.</p>
+
+<!-- 데모 2 -->
+<div class="demo">
+  <p class="dtitle"><span class="tag">DEMO 2</span>30층 네트워크의 신호 전파 시뮬레이션</p>
+  <p class="dsub">세로축은 각 층 출력의 표준편차(로그 스케일), 가로축은 층 번호입니다. 가중치 크기를 조절하고 BN과 skip connection을 켜고 꺼 보세요. 회색 점선(std = 1)이 "건강한" 신호의 기준선입니다.</p>
+  <div class="ctrl">
+    <span class="grp">가중치 초기화 배율 <input type="range" id="d2gain" min="0.6" max="1.6" step="0.02" value="1.25" style="accent-color:var(--warn)"> <span class="val" id="d2gainV"></span></span>
+    <span class="toggle on" id="d2bn"><span class="dot"></span>BatchNorm</span>
+    <span class="toggle purple" id="d2skip"><span class="dot"></span>skip connection</span>
+    <button class="btn" id="d2reroll">가중치 다시 뽑기</button>
+  </div>
+  <canvas id="d2canvas" width="1600" height="560"></canvas>
+  <div class="legend">
+    <span><span class="sw" style="background:var(--warn)"></span>BN 없음</span>
+    <span><span class="sw" style="background:var(--green)"></span>BN 있음</span>
+    <span><span class="sw" style="background:#5b6673"></span>기준선 std = 1</span>
+  </div>
+  <div class="stat" id="d2stat"></div>
+</div>
+
+<p>직접 돌려 보면 이런 것들이 보입니다.</p>
+<ul>
+  <li><b>BN 없음, 배율 &gt; 1</b> — 표준편차가 지수적으로 <span class="kw">폭발</span>합니다. 배율 1.25면 30층 뒤 신호가 수백 배로 커집니다.</li>
+  <li><b>BN 없음, 배율 &lt; 1</b> — 반대로 지수적으로 <span class="kw">소멸</span>합니다. 그래프가 아래로 곤두박질칩니다.</li>
+  <li><b>BN 켬</b> — 배율을 어디에 두든 <span class="kg">모든 층에서 std ≈ 1</span>로 평평하게 유지됩니다. 초기화에 둔감해진다는 것이 바로 이 모습입니다.</li>
+  <li><b>skip만 켬(BN 없음)</b> — 곱셈적 폭발이 덧셈적 성장으로 완화되지만, 여전히 층이 쌓일수록 분산이 <b>단조증가</b>합니다. skip connection만으로는 분포 문제가 해결되지 않습니다.</li>
+  <li><b>skip + BN</b> — ResNet의 실제 구성. 매 블록 끝에서 BN이 분산을 다시 잡아 주므로, 152층이든 1000층이든 같은 원리로 안정됩니다.</li>
+</ul>
+
+<p>이것이 ResNet 논문에서 skip connection과 BN이 함께 쓰인 이유입니다. <b>skip connection은 gradient가 지나갈 고속도로를 놓고, BN은 그 고속도로를 달리는 신호의 크기를 층마다 다시 규격에 맞춥니다.</b> 둘 중 하나만으로는 매우 깊은 네트워크를 학습시키기 어렵습니다.</p>
+
+<!-- ============================================================ -->
+<h2><span class="num">05</span>학습할 때와 추론할 때의 BN은 다르다</h2>
+
+<p>BN에는 함정이 하나 있습니다. 배치 통계 μ<sub>B</sub>, σ²<sub>B</sub>는 <b>배치가 있어야</b> 계산할 수 있다는 점입니다. 추론 시에는 이미지 한 장이 들어올 수도 있고, 같은 입력에 항상 같은 출력이 나와야 합니다.</p>
+
+<p>그래서 BN은 두 가지 모드로 동작합니다.</p>
+
+<div class="scroll"><table>
+  <tr><th></th><th>학습 (train)</th><th>추론 (eval)</th></tr>
+  <tr><td><b>사용하는 통계</b></td><td>현재 미니배치의 μ<sub>B</sub>, σ²<sub>B</sub></td><td>학습 중 누적한 이동평균 μ̂, σ̂²</td></tr>
+  <tr><td><b>출력의 성질</b></td><td>같은 입력도 배치 구성에 따라 출력이 달라짐 (약한 규제 효과)</td><td>결정적 — 배치 크기 1이어도 동작</td></tr>
+  <tr><td><b>통계 갱신</b></td><td><code>μ̂ ← (1−m)·μ̂ + m·μ_B</code> 로 이동평균 누적</td><td>갱신 없음</td></tr>
+</table></div>
+
+<p>PyTorch에서 <code>model.eval()</code>을 깜빡하면 추론 결과가 이상해지는 대표적인 이유가 바로 이것입니다. 반대로 fine-tuning 때 <code>model.train()</code> 상태로 배치 크기 1~2로 학습하면, 노이즈투성이 배치 통계가 이동평균을 오염시켜 성능이 무너지기도 합니다.</p>
+
+<div class="card">
+  <h3 style="margin-top:0">추론 시 BN은 공짜다 — BN folding</h3>
+  <p class="small">추론 모드의 BN은 고정된 μ̂, σ̂², γ, β로 하는 선형 변환일 뿐입니다. 선형 변환(conv)에 선형 변환(BN)이 이어지면 하나로 합칠 수 있습니다:</p>
+  <div class="eq" style="font-size:.95rem">W′ = <span class="frac"><span>γ</span><span>√(σ̂² + ε)</span></span> W , &nbsp;&nbsp; b′ = <span class="frac"><span>γ (b − μ̂)</span><span>√(σ̂² + ε)</span></span> + β</div>
+  <p class="small" style="margin-bottom:0">배포용 모델에서 BN 레이어가 사라져 있는 이유입니다. conv 가중치에 <b>접혀 들어가서(folded)</b> 추론 비용이 0이 됩니다.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2><span class="num">06</span>BN의 한계, 그리고 그 다음</h2>
+
+<ul>
+  <li><b>작은 배치에 약하다</b> — 배치가 2~4장이면 통계 추정이 노이즈투성이가 됩니다. 그래서 detection·segmentation처럼 배치가 작은 작업에서는 배치와 무관하게 채널 그룹 단위로 정규화하는 <b>GroupNorm</b>이 자주 쓰입니다.</li>
+  <li><b>시퀀스 모델과 안 맞는다</b> — 길이가 제각각인 시퀀스에서는 배치 통계가 잘 정의되지 않습니다. Transformer가 배치 대신 <b>각 샘플 안에서</b> 정규화하는 <b>LayerNorm</b>을 쓰는 이유입니다.</li>
+  <li><b>학습·추론 불일치</b> — 05절에서 본 두 모드의 차이는 미묘한 버그의 단골 원인입니다.</li>
+  <li><b>BN 없는 ResNet도 가능하다</b> — NF-ResNet/NFNet(2021)은 신호 전파를 해석적으로 설계해 BN 없이도 대규모 학습에 성공했습니다. 다만 "층마다 분산을 통제해야 한다"는 원리 자체는 동일하고, 그 통제를 정규화 레이어 대신 수식으로 하는 것뿐입니다.</li>
+</ul>
+
+<p>정리하면 — 정규화 기법은 여럿이지만 질문은 하나입니다. <b>"깊은 네트워크에서 신호의 분포를 누가, 어디서, 어떻게 다시 잡아 줄 것인가."</b> BN은 그 질문에 대한 2015년의 답이었고, ResNet은 그 답 위에서 세워졌습니다.</p>
+
+<!-- ============================================================ -->
+<h2><span class="num">07</span>확인 퀴즈</h2>
+
+<div class="quiz card" data-answer="1">
+  <p class="q">Q1. ResNet의 conv 레이어에 bias가 없는(<code>bias=False</code>) 이유는?</p>
+  <div class="opts">
+    <div class="opt">파라미터를 줄여 과적합을 막기 위해</div>
+    <div class="opt">바로 뒤의 BN이 평균을 다시 조정하므로 β와 역할이 중복되기 때문</div>
+    <div class="opt">skip connection이 bias 역할을 대신하기 때문</div>
+  </div>
+  <p class="expl">BN이 배치 평균을 빼는 순간 conv의 bias는 어떤 값이든 소거되고, 이동은 BN의 β가 담당합니다. bias는 있어 봐야 낭비입니다.</p>
+</div>
+
+<div class="quiz card" data-answer="2">
+  <p class="q">Q2. 추론(eval) 모드의 BN이 배치 크기 1에서도 동작할 수 있는 이유는?</p>
+  <div class="opts">
+    <div class="opt">추론 시에는 정규화를 생략하기 때문</div>
+    <div class="opt">한 장의 이미지 안에서 통계를 새로 계산하기 때문</div>
+    <div class="opt">학습 중 누적해 둔 이동평균 통계를 고정값으로 쓰기 때문</div>
+  </div>
+  <p class="expl">추론 시에는 배치 통계 대신 학습 중 쌓아 둔 running mean/var를 씁니다. 그래서 결정적이고, 배치가 없어도 되며, conv에 fold할 수도 있습니다.</p>
+</div>
+
+<div class="quiz card" data-answer="0">
+  <p class="q">Q3. Demo 2에서 skip connection만 켜고 BN을 끄면 분산이 여전히 층마다 증가합니다. 왜일까요?</p>
+  <div class="opts">
+    <div class="opt">매 블록의 출력이 "입력 + 새 신호"의 합이라 분산이 계속 누적되기 때문</div>
+    <div class="opt">skip connection이 gradient를 차단하기 때문</div>
+    <div class="opt">ReLU가 신호의 절반을 잘라내기 때문</div>
+  </div>
+  <p class="expl">독립에 가까운 두 신호를 더하면 분산은 대략 합산됩니다(Var(x+f(x)) ≈ Var(x)+Var(f(x))). 폭발적 곱셈이 덧셈으로 완화될 뿐 증가 자체는 계속되므로, 매 블록 BN이 분산을 다시 잡아 줘야 합니다.</p>
+</div>
+
+<footer>
+  <p>참고 문헌 — Ioffe &amp; Szegedy, <i>Batch Normalization</i> (2015) · He et al., <i>Deep Residual Learning</i> (2015) · He et al., <i>Identity Mappings in Deep Residual Networks</i> (2016) · Santurkar et al., <i>How Does BN Help Optimization?</i> (2018) · Brock et al., <i>NFNet</i> (2021)</p>
+  <p>이 페이지는 외부 의존성 없는 단일 HTML 파일입니다. 모든 시뮬레이션은 브라우저에서 실시간으로 계산됩니다. · <a href="https://github.com/dev-jonghoonpark/how-ai-works">how-ai-works</a></p>
+</footer>
+
+</div>
+
+<script>
+"use strict";
+// ---------- 공용 유틸 ----------
+function randn(){ // Box-Muller
+  let u = 0, v = 0;
+  while(u === 0) u = Math.random();
+  while(v === 0) v = Math.random();
+  return Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v);
+}
+function meanOf(a){ let s=0; for(const x of a) s+=x; return s/a.length; }
+function stdOf(a){ const m=meanOf(a); let s=0; for(const x of a) s+=(x-m)*(x-m); return Math.sqrt(s/a.length); }
+const DPR_W = 1600; // 캔버스 내부 좌표계 고정
+
+// ============================================================
+// DEMO 1 — BN 전/후 히스토그램
+// ============================================================
+(function(){
+  const N = 512;
+  let base = [];
+  function resample(){ base = Array.from({length:N}, randn); }
+  resample();
+
+  const $ = id => document.getElementById(id);
+  const cv = $('d1canvas'), ctx = cv.getContext('2d');
+
+  function draw(){
+    const mu = +$('d1mean').value, sd = +$('d1std').value;
+    const gamma = +$('d1gamma').value, beta = +$('d1beta').value;
+    $('d1meanV').textContent = mu.toFixed(1);
+    $('d1stdV').textContent = sd.toFixed(2);
+    $('d1gammaV').textContent = gamma.toFixed(2);
+    $('d1betaV').textContent = beta.toFixed(1);
+
+    const x = base.map(z => mu + sd*z);
+    const mB = meanOf(x), sB = stdOf(x);
+    const y = x.map(v => gamma*(v-mB)/(sB+1e-5) + beta);
+
+    const W = cv.width, H = cv.height;
+    ctx.clearRect(0,0,W,H);
+
+    // 축 범위 고정: -8 ~ 8
+    const lo=-8, hi=8;
+    const xToPx = v => (v-lo)/(hi-lo)*W;
+
+    // 히스토그램
+    const BINS = 64;
+    function hist(arr){
+      const h = new Array(BINS).fill(0);
+      for(const v of arr){
+        const b = Math.floor((v-lo)/(hi-lo)*BINS);
+        if(b>=0 && b<BINS) h[b]++;
+      }
+      return h;
+    }
+    const hx = hist(x), hy = hist(y);
+    const peak = Math.max(...hx, ...hy, 1);
+    const bw = W/BINS;
+
+    function drawHist(h, color){
+      ctx.fillStyle = color;
+      for(let i=0;i<BINS;i++){
+        const hh = h[i]/peak*(H-70);
+        ctx.fillRect(i*bw+1, H-30-hh, bw-2, hh);
+      }
+    }
+    // 0 기준선
+    ctx.strokeStyle = '#3a4653'; ctx.lineWidth = 2; ctx.setLineDash([6,6]);
+    ctx.beginPath(); ctx.moveTo(xToPx(0), 10); ctx.lineTo(xToPx(0), H-30); ctx.stroke();
+    ctx.setLineDash([]);
+
+    drawHist(hx, 'rgba(255,122,133,.45)');
+    drawHist(hy, 'rgba(95,168,255,.55)');
+
+    // 눈금
+    ctx.fillStyle = '#6e7d8d'; ctx.font = '22px ui-monospace,Menlo,monospace'; ctx.textAlign='center';
+    for(let t=-8;t<=8;t+=2) ctx.fillText(t, xToPx(t), H-6);
+
+    $('d1stat').innerHTML =
+      `입력: mean=<b>${mB.toFixed(2)}</b>, std=<b>${sB.toFixed(2)}</b> &nbsp;→&nbsp; ` +
+      `출력: mean=<b>${meanOf(y).toFixed(2)}</b>, std=<b>${stdOf(y).toFixed(2)}</b> ` +
+      `<span class="muted">(목표: mean=β=${beta.toFixed(1)}, std=γ=${gamma.toFixed(2)})</span>`;
+  }
+
+  ['d1mean','d1std','d1gamma','d1beta'].forEach(id => $(id).addEventListener('input', draw));
+  $('d1resample').addEventListener('click', ()=>{ resample(); draw(); });
+  draw();
+})();
+
+// ============================================================
+// DEMO 2 — 30층 네트워크 신호 전파
+// ============================================================
+(function(){
+  const $ = id => document.getElementById(id);
+  const cv = $('d2canvas'), ctx = cv.getContext('2d');
+  const L = 30;      // 층 수
+  const D = 48;      // 폭
+  const B = 48;      // 배치
+  let seedWeights = null;
+
+  function makeWeights(){
+    // He 초기화: std = sqrt(2/D). gain 배율은 forward에서 곱한다.
+    const ws = [];
+    for(let l=0;l<L;l++){
+      const w = new Float32Array(D*D);
+      const s = Math.sqrt(2/D);
+      for(let i=0;i<D*D;i++) w[i] = randn()*s;
+      ws.push(w);
+    }
+    return ws;
+  }
+  seedWeights = makeWeights();
+
+  // forward: 층별 std 기록. 옵션 {bn, skip, gain}
+  function run(opts){
+    // 입력 배치: 표준정규
+    let act = new Float32Array(B*D);
+    for(let i=0;i<act.length;i++) act[i] = randn();
+    const stds = [];
+    const tmp = new Float32Array(B*D);
+
+    for(let l=0;l<L;l++){
+      const w = seedWeights[l];
+      // tmp = act @ (gain * W)
+      for(let b=0;b<B;b++){
+        for(let j=0;j<D;j++){
+          let s = 0;
+          for(let i=0;i<D;i++) s += act[b*D+i]*w[i*D+j];
+          tmp[b*D+j] = s*opts.gain;
+        }
+      }
+      // BN: 특징(j)별로 배치 방향 정규화
+      if(opts.bn){
+        for(let j=0;j<D;j++){
+          let m=0; for(let b=0;b<B;b++) m += tmp[b*D+j]; m/=B;
+          let v=0; for(let b=0;b<B;b++){ const d=tmp[b*D+j]-m; v+=d*d; } v/=B;
+          const inv = 1/Math.sqrt(v+1e-5);
+          for(let b=0;b<B;b++) tmp[b*D+j] = (tmp[b*D+j]-m)*inv;
+        }
+      }
+      // ReLU
+      for(let i=0;i<tmp.length;i++) tmp[i] = Math.max(0, tmp[i]);
+      // skip: y = x + f(x)
+      const next = new Float32Array(B*D);
+      if(opts.skip){
+        for(let i=0;i<next.length;i++) next[i] = act[i] + tmp[i];
+      } else {
+        next.set(tmp);
+      }
+      act = next;
+
+      // 전체 std 기록
+      let m=0; for(const v of act) m+=v; m/=act.length;
+      let v2=0; for(const v of act){ const d=v-m; v2+=d*d; } v2/=act.length;
+      stds.push(Math.sqrt(v2));
+    }
+    return stds;
+  }
+
+  const bnT = $('d2bn'), skipT = $('d2skip');
+  bnT.addEventListener('click', ()=>{ bnT.classList.toggle('on'); draw(); });
+  skipT.addEventListener('click', ()=>{ skipT.classList.toggle('on'); draw(); });
+  $('d2gain').addEventListener('input', draw);
+  $('d2reroll').addEventListener('click', ()=>{ seedWeights = makeWeights(); draw(); });
+
+  function draw(){
+    const gain = +$('d2gain').value;
+    $('d2gainV').textContent = '×'+gain.toFixed(2);
+    const bnOn = bnT.classList.contains('on');
+    const skipOn = skipT.classList.contains('on');
+
+    // 항상 "BN 없음" 곡선을 비교선으로 함께 그림
+    const noBn = run({bn:false, skip:skipOn, gain});
+    const withBn = bnOn ? run({bn:true, skip:skipOn, gain}) : null;
+
+    const W = cv.width, H = cv.height;
+    ctx.clearRect(0,0,W,H);
+
+    // 세로: log10(std), 범위 -6 ~ +6
+    const yLo=-6, yHi=6;
+    const padL=90, padR=24, padT=18, padB=52;
+    const xPx = l => padL + l/(L-1)*(W-padL-padR);
+    const yPx = v => {
+      const lv = Math.max(yLo, Math.min(yHi, Math.log10(Math.max(v,1e-12))));
+      return padT + (yHi-lv)/(yHi-yLo)*(H-padT-padB);
+    };
+
+    // 격자 + 눈금
+    ctx.font = '22px ui-monospace,Menlo,monospace';
+    for(let e=yLo; e<=yHi; e+=2){
+      const y = padT + (yHi-e)/(yHi-yLo)*(H-padT-padB);
+      ctx.strokeStyle = '#232b36'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+      ctx.fillStyle = '#6e7d8d'; ctx.textAlign='right';
+      ctx.fillText(e===0 ? '1' : '10'+(e>0?'⁺':'⁻')+Math.abs(e), padL-10, y+8);
+    }
+    // 기준선 std=1
+    ctx.strokeStyle = '#5b6673'; ctx.lineWidth=2; ctx.setLineDash([7,7]);
+    ctx.beginPath(); ctx.moveTo(padL, yPx(1)); ctx.lineTo(W-padR, yPx(1)); ctx.stroke();
+    ctx.setLineDash([]);
+    // x 눈금
+    ctx.fillStyle = '#6e7d8d'; ctx.textAlign='center';
+    for(let l=0;l<L;l+=5) ctx.fillText('L'+(l+1), xPx(l), H-16);
+
+    function plot(stds, color){
+      ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.lineJoin='round';
+      ctx.beginPath();
+      stds.forEach((s,l)=>{ const x=xPx(l), y=yPx(s); l===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
+      ctx.stroke();
+      ctx.fillStyle = color;
+      stds.forEach((s,l)=>{ if(l%5===4||l===0){ ctx.beginPath(); ctx.arc(xPx(l),yPx(s),6,0,7); ctx.fill(); } });
+    }
+    plot(noBn, 'rgba(255,122,133,.9)');
+    if(withBn) plot(withBn, 'rgba(126,224,129,.95)');
+
+    const last = a => a[a.length-1];
+    let msg = `BN 없음: 30층 뒤 std = <b>${fmt(last(noBn))}</b>`;
+    if(withBn) msg += ` &nbsp;·&nbsp; BN 있음: std = <b>${fmt(last(withBn))}</b>`;
+    if(skipOn) msg += ` &nbsp;<span class="muted">(skip connection 켜짐)</span>`;
+    $('d2stat').innerHTML = msg;
+  }
+  function fmt(v){
+    if(v===0 || !isFinite(v)) return v.toString();
+    if(v>=0.01 && v<1000) return v.toFixed(2);
+    return v.toExponential(1);
+  }
+  draw();
+})();
+
+// ============================================================
+// 퀴즈
+// ============================================================
+document.querySelectorAll('.quiz').forEach(qz => {
+  const ans = +qz.dataset.answer;
+  const opts = qz.querySelectorAll('.opt');
+  opts.forEach((opt, i) => {
+    opt.addEventListener('click', () => {
+      if(qz.classList.contains('done')) return;
+      qz.classList.add('done');
+      opts[ans].classList.add('correct');
+      if(i !== ans) opt.classList.add('wrong');
+      qz.querySelector('.expl').classList.add('show');
+    });
+  });
+});
+</script>
+</body>
+</html>
